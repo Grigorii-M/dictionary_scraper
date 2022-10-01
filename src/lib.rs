@@ -1,54 +1,70 @@
 use scraper::{Html, Selector};
+use scraper::element_ref::Text;
 
-pub struct DictionaryScraper {
-    word: String,
+pub async fn find_word(word: &str) -> Result<WordInfo, Box<dyn std::error::Error>> {
+    // use `konjugation/<wrd>.htm` for verbs
+    // use `deklination/substantive/<wrd>.htm` for nouns
+    // use `deklination/adjektive/<wrd>.htm` for adjectives
+    let resp = reqwest::get(format!("https://verbformen.de/konjugation/{}.htm", word)).await?;
+
+    let responce_body = resp.text().await?;
+
+    let html = Html::parse_document(&responce_body);
+
+    let info_selector = Selector::parse(".rAbschnitt").unwrap();
+    // verbformen.de webpage has only one element with .rAbschnitt class
+    let full_info = Html::parse_document(&html.select(&info_selector).next().unwrap().html());
+
+    Ok(WordInfo {
+        html: full_info,
+    })
+}
+
+pub struct WordInfo {
     html: Html,
 }
 
-impl DictionaryScraper {
-    pub async fn new(word: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let resp = reqwest::get(format!("https://verbformen.de/konjugation/?w={}", word)).await?;
+impl WordInfo {
+    pub fn definition(&self) -> String {
+        let brief_info_selector = Selector::parse("#vVdBxBox").unwrap();
+        let brief_info = self.html.select(&brief_info_selector).next().unwrap();
 
-        let responce_body = resp.text().await?;
+        let gr_info_selector = Selector::parse(".rInf").unwrap();
+        let gr_info = brief_info.select(&gr_info_selector).next().unwrap();
 
-        let html = Html::parse_document(&responce_body);
+        let mut data = Vec::new();
 
-        Ok(Self {
-            word: word.to_string(),
-            html,
-        })
-    }
+        data.push(gr_info.text().fold(String::new(), |mut acc, line| {acc = format!("{}{}", acc, line.replace("\n", " ")); acc }));
 
-    pub fn define(&self) -> String {
-        let info_selector = Selector::parse(".rAbschnitt").unwrap();
+        let verb_forms_selector = Selector::parse("#stammformen").unwrap();
+        let verb_forms = brief_info.select(&verb_forms_selector).next().unwrap();
 
-        // verbformen.de webpage has only one element with .rAbschnitt class
-        let word_info = self.html.select(&info_selector).next().unwrap();
+        data.push(verb_forms.text().fold(String::new(), |mut acc, line| {acc = format!("{}{}", acc, line.replace("\n", " ")); acc }));
 
-        let selector1 = Selector::parse(".rInf").unwrap();
-        let selector2 = Selector::parse(".r1Zeile").unwrap();
-        let selector3 = Selector::parse(".rU3px").unwrap();
-        let selector4 = Selector::parse(".rO0px").unwrap();
-        let selector5 = Selector::parse(".rNt").unwrap();
+        // These classes are being used with translation, definition, case and example
+        let selector1 = Selector::parse(".r1Zeile").unwrap();
+        let selector2 = Selector::parse(".rU3px").unwrap();
+        let selector3 = Selector::parse(".rO0px").unwrap();
 
-        let definition = word_info
-            .select(&selector1)
-            .find(|el| {
-                selector2.matches(el)
-                    && selector3.matches(el)
-                    && selector4.matches(el)
-                    && selector5.matches(el)
-            })
-            .unwrap();
-        let mut definition_str = String::new();
-        for el in definition.text() {
-            definition_str.push_str(el);
-        }
+        let info = brief_info.select(&selector1).filter_map(|el| {
+            if selector2.matches(&el) && selector3.matches(&el) {
+                let mut data = String::new();
+                el.text().for_each(|line| data.push_str(line));
+                Some(data)
+            } else {
+                None
+            }
+        });
 
-        definition_str
-    }
+        info.for_each(|line| {
+            data.push(line.trim().replace("\n", " "));
+        });
 
-    pub fn word(&self) -> String {
-        self.word.to_string()
+        let mut result = String::new();
+        data.into_iter().for_each(|line| {
+            result.push_str(&line.trim());
+            result.push_str("\n");
+        });
+        result
     }
 }
