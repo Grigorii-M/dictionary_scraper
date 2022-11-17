@@ -1,7 +1,10 @@
 import scraper
+import sheet_worker
 
-word = input("Enter the word: ").lower()
-data = scraper.get_word_data(word)
+sheet_worker.get_data_from_sheet()
 
-for d in data:
-    print(d)
+# word = input("Enter the word: ").lower()
+# data = scraper.get_word_data(word)
+#
+# for d in data:
+#     print(d)
