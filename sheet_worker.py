@@ -7,14 +7,13 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ["https://www.googleapis.com/auth/readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+]
 
-# The ID and range of a sample spreadsheet.
-SAMPLE_SPREADSHEET_ID = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-SAMPLE_RANGE_NAME = "Class Data!A2:E"
 
-
-def get_data_from_sheet():
+def _auth():
     creds = None
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
@@ -32,6 +31,17 @@ def get_data_from_sheet():
         with open("token.json", "w") as token:
             token.write(creds.to_json())
 
+    return creds
+
+
+def get_words():
+    creds = _auth()
+    translation_sheet = _get_translations_sheet(creds)
+    sheet_values = _get_sheet_values(translation_sheet, creds)
+    print(f"{sheet_values}")
+
+
+def _get_translations_sheet(creds):
     try:
         service = build("drive", "v3", credentials=creds)
         files = list()
@@ -39,16 +49,48 @@ def get_data_from_sheet():
         while True:
             response = (
                 service.files()
-                .list(q="name='Saved translations'", pageToken=page_token)
+                .list(
+                    q="name contains 'Saved translations' and trashed = false",
+                    # if at least one is specified, the rest should be too
+                    fields="files(name, id, createdTime, mimeType)",
+                    pageToken=page_token,
+                )
                 .execute()
             )
             for file in response.get("files", []):
-                print(f"found: {file.get('name')}, {file.get('id')}")
+                if file.get("mimeType") == "application/vnd.google-apps.spreadsheet":
+                    files.append(file)
 
-            files.extend(response.get("files", []))
             page_token = response.get("nextPageToken", None)
             if page_token is None:
                 break
 
+        if len(files) == 1:
+            return files[0]
+        else:
+            # Get the latest file
+            files.sort(key=lambda el: el.get("createdTime"))
+
+        return files[-1]
+
     except HttpError as error:
-        print(f"an error occurred: {error}")
+        print(f"An error occurred during file retrieval:\n {error}")
+
+
+def _get_sheet_values(spreadsheet, creds):
+    try:
+        service = build("sheets", "v4", credentials=creds)
+        sheet = service.spreadsheets()
+        result = (
+            sheet.values()
+            .get(
+                spreadsheetId=spreadsheet.get("id"),
+                range=f"A:D",
+            )
+            .execute()
+        )
+        values = result.get("values", [])
+        return values
+
+    except HttpError as error:
+        print(f"An error occured during sheet parsing:\n {error}")
