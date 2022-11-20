@@ -5,6 +5,8 @@ import sheet_worker
 def main():
     sheet_values = sheet_worker.get_sheet_values()
     valid, invalid = _parse_word_list(sheet_values)
+    for word in valid:
+        data = scraper.get_word_data(word)
 
 
 def _parse_word_list(word_list):

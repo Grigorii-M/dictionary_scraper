@@ -1,39 +1,43 @@
 import requests
 from bs4 import BeautifulSoup
-from enum import Enum
-
-
-class Word(Enum):
-    Undefined = 0
-    Substantive = "deklination/substantive"
-    Verb = "konjugation"
+import json
 
 
 def get_word_data(word):
-    responce = requests.get(f"https://www.verbformen.de/?w={word}")
-    soup = BeautifulSoup(responce.text, "html.parser")
+    response = requests.get(f"https://www.dwds.de/api/wb/snippet/?q={word}")
+    data = json.loads(response.text)
+    print(word)
 
-    title = soup.title
-    assert title is not None
-    title = title.string
-    assert title is not None
+    for i in range(len(data)):
+        print(f"\t{i})")
 
-    word_type = Word.Undefined
-    if "des Verbs" in title:
-        word_type = Word.Verb
-    elif "des Substantivs" in title:
-        word_type = Word.Substantive
-    else:
-        raise ValueError("Unexpected word type")
+        lemma = data[i]
+        article_url = lemma["url"]
+        word_type = lemma["wortart"]
 
-    responce1 = requests.get(
-        f"https://www.verbformen.de/{word_type.value}/steckbrief/info/{word}.htm"
-    )
-    soup1 = BeautifulSoup(responce1.text, "html.parser")
-    paras = soup1.find_all("p")
+        response = requests.get(article_url)
 
-    data = list()
-    for p in paras:
-        data.append(p.get_text().strip().replace("\n", " "))
+        soup = BeautifulSoup(response.text, "html.parser")
+        res = soup.find_all(class_="dwdswb-definition")
 
-    return data
+        if len(res) > 0:
+            for tag in res:
+                print(f"\t{tag.get_text()} -- (dwds)")
+        else:
+            url_part = ""
+            if word_type in {"Adjektiv", "Komparativ", "Superlativ"}:
+                url_part = "deklination/adjektive"
+            elif word_type == "Substantiv":
+                url_part = "deklination/substantive"
+            elif word_type == "Verb":
+                url_part = "konjugation"
+            else:
+                ...
+
+            response = requests.get(
+                f"https://www.verbformen.de/{url_part}/steckbrief/info/{word}.htm"
+            )
+            soup = BeautifulSoup(response.text, "html.parser")
+            res = soup.find("i")
+            assert res is not None
+            print(f"\t{res.get_text()} -- (verbformen)")
