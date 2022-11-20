@@ -13,6 +13,12 @@ SCOPES = [
 ]
 
 
+def get_sheet_values():
+    creds = _auth()
+    translation_sheet = _get_translations_sheet(creds)
+    return _get_sheet_values(translation_sheet, creds)
+
+
 def _auth():
     creds = None
     # The file token.json stores the user's access and refresh tokens, and is
@@ -32,13 +38,6 @@ def _auth():
             token.write(creds.to_json())
 
     return creds
-
-
-def get_words():
-    creds = _auth()
-    translation_sheet = _get_translations_sheet(creds)
-    sheet_values = _get_sheet_values(translation_sheet, creds)
-    print(f"{sheet_values}")
 
 
 def _get_translations_sheet(creds):
@@ -65,16 +64,14 @@ def _get_translations_sheet(creds):
             if page_token is None:
                 break
 
-        if len(files) == 1:
-            return files[0]
-        else:
+        if len(files) != 1:
             # Get the latest file
             files.sort(key=lambda el: el.get("createdTime"))
 
         return files[-1]
 
     except HttpError as error:
-        print(f"An error occurred during file retrieval:\n {error}")
+        print(f"An error occurred during file retrieval: {error}")
 
 
 def _get_sheet_values(spreadsheet, creds):
@@ -93,4 +90,4 @@ def _get_sheet_values(spreadsheet, creds):
         return values
 
     except HttpError as error:
-        print(f"An error occured during sheet parsing:\n {error}")
+        print(f"An error occured during sheet parsing: {error}")
